@@ -20,7 +20,7 @@ class OutputState(StrEnum):
     RESUMED = "OBS_WEBSOCKET_OUTPUT_RESUMED"
 
 @dataclass
-class ReplayStateData:
+class ReplayStatusData:
     output_active: bool
 
 @dataclass
@@ -55,7 +55,7 @@ class MyWidget(QtWidgets.QWidget):
         _ = self.pause_button.clicked.connect(self.toggle_record_pause)
         _ = self.replay_button.clicked.connect(self.toggle_replay_buffer)
         _ = self.save_button.clicked.connect(self.save_replay_buffer)
-        _ = self.exit_button.clicked.connect(QtWidgets.QApplication.quit)
+        _ = self.exit_button.clicked.connect(self.quit_obs_widget)
 
         # Create a horizontal layout for buttons
         button_layout = QtWidgets.QHBoxLayout()
@@ -77,6 +77,13 @@ class MyWidget(QtWidgets.QWidget):
         self.setFixedSize(100, 20)
         self.move_widget()
 
+    def quit_obs_widget(self):
+        if cast(RecordStatusData, self.obs_client.get_record_status()).output_active:
+            self.obs_client.stop_record()
+        if cast(ReplayStatusData, self.obs_client.get_replay_buffer_status()).output_active:
+            self.obs_client.stop_replay_buffer()
+        QtWidgets.QApplication.quit()
+
     def toggle_record(self):
         if cast(RecordStateData, self.obs_client.get_record_status()).output_active:
             _ = self.obs_client.stop_record()
@@ -94,13 +101,16 @@ class MyWidget(QtWidgets.QWidget):
             self.change_record_button("grey")
 
     def toggle_replay_buffer(self):
-        if cast(ReplayStateData, self.obs_client.get_replay_buffer_status()).output_active:
+        if cast(ReplayStatusData, self.obs_client.get_replay_buffer_status()).output_active:
             self.obs_client.stop_replay_buffer()
         else:
             self.obs_client.start_replay_buffer()
 
     def save_replay_buffer(self):
-        self.obs_client.save_replay_buffer()
+        record_status = cast(RecordStatusData, self.obs_client.get_record_status())
+        replay_status = cast(ReplayStatusData, self.obs_client.get_replay_buffer_status())
+        if replay_status.output_active and not record_status.output_paused:
+            self.obs_client.save_replay_buffer()
 
     def create_colored_button(self, text: str, color: str):
         """Creates a button with the given text and background color."""
@@ -143,7 +153,7 @@ def main():
     toast = Toast()
 
     app = QtWidgets.QApplication([])
-    width, height = app.primaryScreen().size().toTuple()
+    width, _ = cast(tuple[int,int], app.primaryScreen().size().toTuple())
     widget = MyWidget()
     widget.move_widget(width // 2 - widget.width() // 2, 0)
 
@@ -160,7 +170,7 @@ def main():
             widget.change_record_button("red")
             show_toast("Recording started")
 
-    def on_replay_buffer_state_changed(data: ReplayStateData):
+    def on_replay_buffer_state_changed(data: ReplayStatusData):
         if data.output_active:
             widget.change_replay_button("green")
         else:
