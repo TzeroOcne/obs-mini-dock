@@ -50,6 +50,7 @@ class MyWidget(QtWidgets.QWidget):
         self.replay_button = self.create_colored_button("", "grey")
         self.save_button = self.create_colored_button("", "yellow")
         self.exit_button = self.create_colored_button("", "blue")
+        self.setup_button_color()
 
         _ = self.record_button.clicked.connect(self.toggle_record)
         _ = self.pause_button.clicked.connect(self.toggle_record_pause)
@@ -76,6 +77,16 @@ class MyWidget(QtWidgets.QWidget):
         self.setWindowFlag(QtCore.Qt.WindowStaysOnTopHint)
         self.setFixedSize(100, 20)
         self.move_widget()
+
+    def setup_button_color(self):
+        record_status = cast(RecordStatusData, self.obs_client.get_record_status())
+        replay_status = cast(ReplayStatusData, self.obs_client.get_replay_buffer_status())
+        if record_status.output_active:
+            self.change_record_button("red")
+        if record_status.output_paused:
+            self.change_record_button("yellow")
+        if replay_status.output_active:
+            self.change_replay_button("green")
 
     def quit_obs_widget(self):
         if cast(RecordStatusData, self.obs_client.get_record_status()).output_active:
