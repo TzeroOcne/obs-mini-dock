@@ -15,6 +15,19 @@ import obsws_python as obs # pyright: ignore[reportMissingTypeStubs]
 YELLOW = "#ffff00"
 GREEN = "#01ff00"
 
+APP_BANNER = """
+┌─────────────────────────────────────────────────────────────────────────┐
+│                                                                         │
+│  ███████╗ █████╗ ███╗   ██╗ ██████╗██╗   ██╗████████╗██╗   ██╗██╗       │
+│  ██╔════╝██╔══██╗████╗  ██║██╔════╝╚██╗ ██╔╝╚══██╔══╝╚██╗ ██╔╝██║       │
+│  █████╗  ███████║██╔██╗ ██║██║      ╚████╔╝    ██║    ╚████╔╝ ██║       │
+│  ██╔══╝  ██╔══██║██║╚██╗██║██║       ╚██╔╝     ██║     ╚██╔╝  ██║       │
+│  ██║     ██║  ██║██║ ╚████║╚██████╗   ██║      ██║      ██║   ███████╗  │
+│  ╚═╝     ╚═╝  ╚═╝╚═╝  ╚═══╝ ╚═════╝   ╚═╝      ╚═╝      ╚═╝   ╚══════╝  │
+│                                                                         │
+└─────────────────────────────────────────────────────────────────────────┘
+"""
+
 class OutputState(StrEnum):
     STARTING = "OBS_WEBSOCKET_OUTPUT_STARTING"
     STARTED = "OBS_WEBSOCKET_OUTPUT_STARTED"
@@ -412,6 +425,8 @@ def main():
     client.callback.register(on_replay_buffer_state_changed) # pyright: ignore[reportUnknownMemberType]
     client.callback.register(on_replay_buffer_saved) # pyright: ignore[reportUnknownMemberType]
     print(hex_to_ansi(GREEN, "OBS callback registered"))
+
+    print(hex_to_ansi(GREEN, APP_BANNER))
 
     exit_code = app.exec()
 
