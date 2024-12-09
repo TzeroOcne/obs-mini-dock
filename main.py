@@ -95,12 +95,26 @@ class RecordStateData:
 class ReplayBufferSavedData:
     saved_replay_path: str
 
-def focus_hwnd(hwnd: int):
-    if win32gui.IsIconic(hwnd):
-        _ = win32gui.ShowWindow(hwnd, win32con.SW_RESTORE)
-    else:
-        _ = win32gui.ShowWindow(hwnd, win32con.SW_SHOW)
-    win32gui.SetForegroundWindow(hwnd)
+class FocusWorker(QtCore.QObject):
+    focus_signal:QtCore.Signal = QtCore.Signal(int)
+    finished:QtCore.Signal = QtCore.Signal()
+    error:QtCore.Signal = QtCore.Signal(str)
+
+    def __init__(self):
+        super().__init__()
+        _ = self.focus_signal.connect(self.focus_hwnd)
+
+    def focus_hwnd(self, hwnd:int):
+        try:
+            if win32gui.IsIconic(hwnd):
+                _ = win32gui.ShowWindow(hwnd, win32con.SW_RESTORE)
+            else:
+                _ = win32gui.ShowWindow(hwnd, win32con.SW_SHOW)
+            win32gui.SetForegroundWindow(hwnd)
+        except Exception as e:
+            self.error.emit(str(e))
+        finally:
+            self.finished.emit()
 
 def frameless(self: QtWidgets.QWidget):
     self.setWindowFlag(QtCore.Qt.FramelessWindowHint) # pyright: ignore[reportAttributeAccessIssue, reportUnknownMemberType, reportUnknownArgumentType]
@@ -153,14 +167,24 @@ def get_window_list():
 
 class WindowFuzzyFinder(QtWidgets.QWidget):
     signal:QtCore.Signal = QtCore.Signal()
+    select_signal:QtCore.Signal = QtCore.Signal()
     title_list:list[tuple[int, str]] = []
     filtered_list:list[tuple[int, str]] = []
+
+    focus_thread:QtCore.QThread
+    focus_worker:FocusWorker
 
     def __init__(self):
         super().__init__()
         frameless(self)
         tool(self)
         stay_on_top(self)
+
+        self.focus_thread = QtCore.QThread()
+        _ = self.select_signal.connect(self.select_item)
+        self.focus_worker = FocusWorker()
+        _ = self.focus_worker.moveToThread(self.focus_thread)
+        self.focus_thread.start()
 
         self.status_label:QtWidgets.QLabel = QtWidgets.QLabel("Status")
         exit_icon = QtGui.QIcon("exit.svg")
@@ -197,6 +221,10 @@ class WindowFuzzyFinder(QtWidgets.QWidget):
 
         self.setFixedSize(400, 400)
 
+    def cleanup(self):
+        _ = self.focus_thread.quit()
+        _ = self.focus_thread.wait()
+
     @override
     def keyPressEvent(self, event: QtGui.QKeyEvent):
         """Handle key press events."""
@@ -204,6 +232,7 @@ class WindowFuzzyFinder(QtWidgets.QWidget):
         if event.key() == QtCore.Qt.Key_Escape: # pyright: ignore[reportAttributeAccessIssue, reportUnknownMemberType]
             self.hide_me()
         if event.key() == QtCore.Qt.Key_Return: # pyright: ignore[reportAttributeAccessIssue, reportUnknownMemberType]
+            # self.select_signal.emit()
             self.select_item()
         else:
             super().keyPressEvent(event)
@@ -220,7 +249,7 @@ class WindowFuzzyFinder(QtWidgets.QWidget):
         row = self.window_list.currentRow()
         if row < 0: row = 0
         hwnd, _1 = self.filtered_list[row]
-        focus_hwnd(hwnd)
+        self.focus_worker.focus_signal.emit(hwnd)
         self.hide_me()
 
     def handle_search(self):
@@ -462,6 +491,8 @@ def main():
     print(hex_to_ansi(GREEN, APP_BANNER))
 
     exit_code = app.exec()
+
+    finder_widget.cleanup()
 
     sys.exit(exit_code)
 
