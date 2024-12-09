@@ -43,7 +43,10 @@ class ReplayBufferSavedData:
     saved_replay_path: str
 
 def focus_hwnd(hwnd: int):
-    _ = win32gui.ShowWindow(hwnd, win32con.SW_RESTORE)
+    if win32gui.IsIconic(hwnd):
+        _ = win32gui.ShowWindow(hwnd, win32con.SW_RESTORE)
+    else:
+        _ = win32gui.ShowWindow(hwnd, win32con.SW_SHOW)
     win32gui.SetForegroundWindow(hwnd)
 
 def frameless(self: QtWidgets.QWidget):
