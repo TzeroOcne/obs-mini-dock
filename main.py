@@ -152,6 +152,7 @@ def get_window_list():
     return hwnd_list
 
 class WindowFuzzyFinder(QtWidgets.QWidget):
+    signal:QtCore.Signal = QtCore.Signal()
     title_list:list[tuple[int, str]] = []
     filtered_list:list[tuple[int, str]] = []
 
@@ -425,7 +426,8 @@ def main():
         finder_widget.show_title_list()
     finder_widget.show()
     finder_widget.hide()
-    ahk.add_hotkey("^<#/", callback=toggle_fuzzy_window)
+    _ = finder_widget.signal.connect(toggle_fuzzy_window)
+    ahk.add_hotkey("^<#/", callback=finder_widget.signal.emit)
     ahk.start_hotkeys()
     print(hex_to_ansi(GREEN, "Fuzzy finder initialized"))
 
