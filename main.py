@@ -249,9 +249,11 @@ class OBSWidget(QtWidgets.QWidget):
         self.tray_menu:QtWidgets.QMenu = QtWidgets.QMenu(self)
 
         show_action = QtGui.QAction("Show", self)
+        show_action.setIcon(QtGui.QIcon("control.svg"))
         _ = show_action.triggered.connect(self.show)
         self.tray_menu.addAction(show_action)
         quit_action = QtGui.QAction("Quit", self)
+        quit_action.setIcon(QtGui.QIcon("exit.svg"))
         _ = quit_action.triggered.connect(self.quit_obs_widget)
         self.tray_menu.addAction(quit_action)
 
