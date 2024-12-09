@@ -6,10 +6,12 @@ from ahk import AHK
 from windows_toasts import Toast, WindowsToaster
 from PySide6 import QtCore, QtWidgets, QtGui
 from fuzzyfinder import fuzzyfinder # pyright: ignore[reportAttributeAccessIssue, reportUnknownVariableType, reportMissingTypeStubs]
+from ctypes import wintypes
 import win32con
 import win32gui
 import sys
 import obsws_python as obs # pyright: ignore[reportMissingTypeStubs]
+import ctypes
 
 # ANSI escape codes for yellow and bright yellow
 YELLOW = "#ffff00"
@@ -27,6 +29,44 @@ APP_BANNER = """
 │                                                                         │
 └─────────────────────────────────────────────────────────────────────────┘
 """
+
+def hex_to_ansi(hex_color: str, text: str) -> str:
+    """
+    Converts a hex color code to an ANSI escape sequence for True Color.
+    Args:
+        hex_color (str): The hex color code (e.g., "#FFD700").
+        text (str): The text to colorize.
+    Returns:
+        str: The text wrapped in the ANSI color code.
+    """
+    # Remove the '#' if it exists
+    hex_color = hex_color.lstrip('#')
+    r, g, b = int(hex_color[:2], 16), int(hex_color[2:4], 16), int(hex_color[4:], 16)
+    return f"\033[38;2;{r};{g};{b}m{text}\033[0m"
+
+# Load the DwmGetWindowAttribute function from dwmapi.dll
+dwmapi = ctypes.windll.dwmapi
+
+# Define constants
+DWMWA_CLOAKED = 14
+
+# Define the prototype for DwmGetWindowAttribute
+dwmapi.DwmGetWindowAttribute.argtypes = [wintypes.HWND, wintypes.UINT, ctypes.POINTER(ctypes.c_int), wintypes.UINT]
+dwmapi.DwmGetWindowAttribute.restype = ctypes.c_long
+
+print(hex_to_ansi(YELLOW, "Initializing AHK..."))
+ahk = AHK()
+print(hex_to_ansi(GREEN, "AHK initialized"))
+
+# Function to check if a window is cloaked
+def is_window_cloaked(hwnd: int) -> bool:
+    cloaked = ctypes.c_int(0)
+    result:int = dwmapi.DwmGetWindowAttribute(hwnd, DWMWA_CLOAKED, ctypes.byref(cloaked), ctypes.sizeof(cloaked))
+    
+    # Check if the result succeeded (SUCCEEDED result is 0)
+    if result == 0:  # 0 means S_OK (success)
+        return cloaked.value != 0
+    return False
 
 class OutputState(StrEnum):
     STARTING = "OBS_WEBSOCKET_OUTPUT_STARTING"
@@ -71,9 +111,16 @@ def stay_on_top(self: QtWidgets.QWidget):
 def tool(self: QtWidgets.QWidget):
     self.setWindowFlag(QtCore.Qt.Tool) # pyright: ignore[reportAttributeAccessIssue, reportUnknownMemberType, reportUnknownArgumentType]
 
+def get_window_process_name(hwnd: int) -> str:
+    return ahk.win_get_process_name(f"ahk_id {hwnd}") or ""
+
 def is_window_in_taskbar(hwnd: int) -> bool:
     # Check if the window is visible
     if not win32gui.IsWindowVisible(hwnd):
+        return False
+    if not win32gui.IsWindow(hwnd):
+        return False
+    if is_window_cloaked(hwnd):
         return False
 
     # Get the extended window styles
@@ -99,7 +146,8 @@ def get_window_list():
         if is_window_in_taskbar(hwnd):
             title = win32gui.GetWindowText(hwnd)
             if title != "":
-                hwnd_list.append((hwnd, title))
+                name = get_window_process_name(hwnd)
+                hwnd_list.append((hwnd, f"{title} - {name}"))
     win32gui.EnumWindows(register_window, []) # pyright: ignore[reportUnknownArgumentType]
     return hwnd_list
 
@@ -346,28 +394,11 @@ class OBSWidget(QtWidgets.QWidget):
     def change_replay_button(self, color: str):
         self.replay_button.setStyleSheet(f"background-color: {color}; color: white; border-radius: 0px;")
 
-def hex_to_ansi(hex_color: str, text: str) -> str:
-    """
-    Converts a hex color code to an ANSI escape sequence for True Color.
-    Args:
-        hex_color (str): The hex color code (e.g., "#FFD700").
-        text (str): The text to colorize.
-    Returns:
-        str: The text wrapped in the ANSI color code.
-    """
-    # Remove the '#' if it exists
-    hex_color = hex_color.lstrip('#')
-    r, g, b = int(hex_color[:2], 16), int(hex_color[2:4], 16), int(hex_color[4:], 16)
-    return f"\033[38;2;{r};{g};{b}m{text}\033[0m"
-
 def main():
+    global ahk
     print(hex_to_ansi(YELLOW, "Initializing event client..."))
     client = obs.EventClient(host='127.0.0.1', password='haB8ihFOJ6Ig2wQ6')
     print(hex_to_ansi(GREEN, "Client initialized"))
-
-    print(hex_to_ansi(YELLOW, "Initializing AHK..."))
-    ahk = AHK()
-    print(hex_to_ansi(GREEN, "AHK initialized"))
 
     print(hex_to_ansi(YELLOW, "Initializing toaster..."))
     toaster = WindowsToaster('OBS Python Toast')
