@@ -1,18 +1,13 @@
 from dataclasses import dataclass
 from enum import StrEnum
 from logging import error
-from typing import cast
-from obsws_python.events import threading
+from typing import cast, override
 from ahk import AHK
-import win32api
-import win32con
-import win32gui
 from windows_toasts import Toast, WindowsToaster
 from PySide6 import QtCore, QtWidgets, QtGui
-from ctypes import wintypes
-from fuzzyfinder import fuzzyfinder # pyright: ignore[reportAttributeAccessIssue]
-import ctypes
-import keyboard
+from fuzzyfinder import fuzzyfinder # pyright: ignore[reportAttributeAccessIssue, reportUnknownVariableType, reportMissingTypeStubs]
+import win32con
+import win32gui
 import sys
 import obsws_python as obs # pyright: ignore[reportMissingTypeStubs]
 
@@ -48,7 +43,7 @@ class ReplayBufferSavedData:
     saved_replay_path: str
 
 def focus_hwnd(hwnd: int):
-    _ = win32gui.ShowWindow(hwnd, win32con.SW_SHOW)
+    _ = win32gui.ShowWindow(hwnd, win32con.SW_RESTORE)
     win32gui.SetForegroundWindow(hwnd)
 
 def frameless(self: QtWidgets.QWidget):
@@ -60,28 +55,13 @@ def stay_on_top(self: QtWidgets.QWidget):
 def tool(self: QtWidgets.QWidget):
     self.setWindowFlag(QtCore.Qt.Tool) # pyright: ignore[reportAttributeAccessIssue, reportUnknownMemberType, reportUnknownArgumentType]
 
-def get_monitor_info(monitor: int):
-    # Get monitor info (position and size) using the monitor handle.
-    monitor_info = ctypes.windll.user32.EnumDisplayMonitors(monitor, None)
-    return monitor_info
-
-def move_window(hwnd, monitor_index):
-    # Get the monitor info
-    monitor_info = get_monitor_info(monitor_index)
-    
-    # Assume monitors are arranged side by side.
-    # You'll need to adjust based on your specific arrangement.
-    if monitor_info:
-        x, y, width, height = monitor_info[monitor_index]
-        win32gui.MoveWindow(hwnd, x, y, width, height, True)
-
-def is_window_in_taskbar(hwnd: int):
+def is_window_in_taskbar(hwnd: int) -> bool:
     # Check if the window is visible
     if not win32gui.IsWindowVisible(hwnd):
         return False
 
     # Get the extended window styles
-    ex_style = win32gui.GetWindowLong(hwnd, win32con.GWL_EXSTYLE)
+    ex_style = win32gui.GetWindowLong(hwnd, win32con.GWL_EXSTYLE) # pyright: ignore[reportUnknownMemberType, reportUnknownVariableType]
 
     # Check if it is a tool window (not in the taskbar)
     if ex_style & win32con.WS_EX_TOOLWINDOW:
@@ -104,10 +84,10 @@ def get_window_list():
             title = win32gui.GetWindowText(hwnd)
             if title != "":
                 hwnd_list.append((hwnd, title))
-    win32gui.EnumWindows(register_window, [])
+    win32gui.EnumWindows(register_window, []) # pyright: ignore[reportUnknownArgumentType]
     return hwnd_list
 
-class StatusWindow(QtWidgets.QWidget):
+class WindowFuzzyFinder(QtWidgets.QWidget):
     title_list:list[tuple[int, str]] = []
     filtered_list:list[tuple[int, str]] = []
 
@@ -129,7 +109,7 @@ class StatusWindow(QtWidgets.QWidget):
         self.search_bar:QtWidgets.QLineEdit = QtWidgets.QLineEdit()
 
         self.window_list:QtWidgets.QListWidget = QtWidgets.QListWidget()
-        self.window_list.setSelectionMode(QtWidgets.QAbstractItemView.SingleSelection) # pyright: ignore[reportAttributeAccessIssue]
+        self.window_list.setSelectionMode(QtWidgets.QAbstractItemView.SingleSelection) # pyright: ignore[reportAttributeAccessIssue, reportUnknownMemberType, reportUnknownArgumentType]
         _ = self.window_list.itemClicked.connect(self.select_item)
 
         self.root_layout:QtWidgets.QVBoxLayout = QtWidgets.QVBoxLayout()
@@ -152,12 +132,13 @@ class StatusWindow(QtWidgets.QWidget):
 
         self.setFixedSize(400, 400)
 
+    @override
     def keyPressEvent(self, event: QtGui.QKeyEvent):
         """Handle key press events."""
         # Check if the pressed key is Esc
-        if event.key() == QtCore.Qt.Key_Escape: # pyright: ignore[reportAttributeAccessIssue]
+        if event.key() == QtCore.Qt.Key_Escape: # pyright: ignore[reportAttributeAccessIssue, reportUnknownMemberType]
             self.hide_me()
-        if event.key() == QtCore.Qt.Key_Return: # pyright: ignore[reportAttributeAccessIssue]
+        if event.key() == QtCore.Qt.Key_Return: # pyright: ignore[reportAttributeAccessIssue, reportUnknownMemberType]
             self.select_item()
         else:
             super().keyPressEvent(event)
@@ -184,39 +165,25 @@ class StatusWindow(QtWidgets.QWidget):
     def filter_list(self):
         text = self.search_bar.text().strip()
         if text != "":
-            self.filtered_list = list(fuzzyfinder(text, self.title_list, accessor=lambda title: title[1]))
+            self.filtered_list = list(fuzzyfinder(text, self.title_list, accessor=lambda title: title[1])) # pyright: ignore[reportUnknownLambdaType, reportUnknownArgumentType]
         else:
             self.filtered_list = self.title_list
 
     def move_widget_to_cursor_monitor_center(self):
         # Get the screen where the cursor is located
         cursor_pos = QtGui.QCursor.pos()
-        # print(cursor_pos)
         current_screen = QtWidgets.QApplication.screenAt(cursor_pos)
-        # print(current_screen.geometry(), current_screen.virtualGeometry(), current_screen.size())
 
-        if current_screen is None:
+        if current_screen is None: # pyright: ignore[reportUnnecessaryComparison]
             # Default to the primary screen if no screen found
             current_screen = QtWidgets.QApplication.primaryScreen()
-
         ratio = current_screen.devicePixelRatio()
 
-        # Get the cursor position
-        cursor_pos = win32gui.GetCursorPos()
-
-        # Find the monitor containing the cursor
-        monitor_handle = ctypes.windll.user32.MonitorFromPoint(
-            ctypes.wintypes.POINT(cursor_pos[0], cursor_pos[1]),
-            win32con.MONITOR_DEFAULTTONEAREST
-        )
-        monitor_info = win32api.GetMonitorInfo(monitor_handle)
-        left, top, right, bottom = monitor_info['Monitor']
-        width = right - left
-        height = bottom - top
-        center_x = left + width // 2
-        center_y = top + height // 2
-        target_x = int(center_x - 200 * ratio)
-        target_y = int(center_y - 200 * ratio)
+        # Get target x and y positions
+        screen_geometry = current_screen.geometry()
+        center = screen_geometry.center()
+        target_x = int((center.x() - 200) * ratio)
+        target_y = int((center.y() - 200) * ratio)
         size = int(400 * ratio)
 
         winId = self.winId()
@@ -233,8 +200,6 @@ class StatusWindow(QtWidgets.QWidget):
     def show_title_list(self):
         self.search_bar.setFocus()
         self.window_list.clear()
-        # for _, title in self.filtered_list:
-        #     self.window_list.addItem(title)
         self.window_list.addItems([title for _, title in self.filtered_list])
         self.search_bar.setFocus()
 
@@ -363,62 +328,6 @@ class OBSWidget(QtWidgets.QWidget):
     def change_replay_button(self, color: str):
         self.replay_button.setStyleSheet(f"background-color: {color}; color: white; border-radius: 0px;")
 
-# Define the callback function signature
-WinEventProcType = ctypes.WINFUNCTYPE(
-    None,  # Return type: void
-    wintypes.HANDLE,  # hWinEventHook
-    wintypes.DWORD,   # event
-    wintypes.HWND,    # hwnd
-    wintypes.LONG,    # idObject
-    wintypes.LONG,    # idChild
-    wintypes.DWORD,   # dwEventThread
-    wintypes.DWORD    # dwmsEventTime
-)
-
-hook_thread_id:int|None = None  # Global variable to store the hook thread ID
-
-def hook_thread():
-    """Run the hook and message loop in a background thread."""
-    global hook_thread_id
-    ole32 = ctypes.windll.ole32
-    user32 = ctypes.windll.user32
-
-    ole32.CoInitialize(None)  # Initialize the COM library
-
-    # Store the thread ID for posting WM_QUIT
-    hook_thread_id = ctypes.windll.kernel32.GetCurrentThreadId()
-
-    WINEVENT_OUTOFCONTEXT = 0x0000
-
-    # event_callback = WinEventProcType(win_event_proc)
-
-    # hook:int = user32.SetWinEventHook(
-    #     win32con.EVENT_OBJECT_SHOW,  # Min event constant
-    #     win32con.EVENT_OBJECT_HIDE,  # Max event constant
-    #     0,                           # DLL handle (0 means not in a DLL)
-    #     event_callback,              # Callback function
-    #     # win_event_proc,              # Callback function
-    #     0,                           # Process ID (0 for all processes)
-    #     0,                           # Thread ID (0 for all threads)
-    #     WINEVENT_OUTOFCONTEXT        # Hook flags
-    # )
-    #
-    # if not hook:
-    #     print("Failed to set hook")
-    #     ole32.CoUninitialize()
-    #     return
-    #
-    # try:
-    #     print("Hook thread running... Listening for new windows.")
-    #     msg = wintypes.MSG()
-    #     while user32.GetMessageW(ctypes.byref(msg), 0, 0, 0) != 0:
-    #         user32.TranslateMessage(ctypes.byref(msg))
-    #         user32.DispatchMessageW(ctypes.byref(msg))
-    # finally:
-    #     user32.UnhookWinEvent(hook)
-    #     ole32.CoUninitialize()
-    #     print("Hook thread exited.")
-
 def hex_to_ansi(hex_color: str, text: str) -> str:
     """
     Converts a hex color code to an ANSI escape sequence for True Color.
@@ -447,42 +356,31 @@ def main():
     toast = Toast()
     print(hex_to_ansi(GREEN, "Toaster initialized"))
 
-
-    # Start the hook thread
-    # print(hex_to_ansi(YELLOW, "Initializing hook thread..."))
-    # hook_thread_instance = threading.Thread(target=hook_thread, daemon=True)
-    # hook_thread_instance.start()
-    # # Wait until the hook thread has initialized
-    # while hook_thread_id is None:
-    #     pass        
-    # print(hex_to_ansi(GREEN, "Hook thread initialized"))
-
-    # def kill_hook_thread():
-    #     """Post WM_QUIT to the hook thread."""
-    #     ctypes.windll.user32.PostThreadMessageW(hook_thread_id, win32con.WM_QUIT, 0, 0)
-
     app = QtWidgets.QApplication([])
     width, _ = cast(tuple[int,int], app.primaryScreen().size().toTuple())
+    print(hex_to_ansi(YELLOW, "Initializing OBS widget..."))
     obs_widget = OBSWidget()
     obs_widget.move_widget(width // 2 - 60, 0)
+    obs_widget.show()
+    obs_widget.hide()
+    print(hex_to_ansi(GREEN, "OBS widget initialized"))
 
-    status_widget = StatusWindow()
-
+    print(hex_to_ansi(YELLOW, "Initializing fuzzy finder..."))
+    finder_widget = WindowFuzzyFinder()
     def toggle_fuzzy_window():
-        status_widget.set_title_list()
-        status_widget.move_widget_to_cursor_monitor_center()
-        status_widget.activate()
-        status_widget.filter_list()
-        ahk.win_activate(f"ahk_id {status_widget.winId()}")
-        status_widget.show_title_list()
-
-    status_widget.show()
-    status_widget.hide()
-
+        finder_widget.set_title_list()
+        finder_widget.move_widget_to_cursor_monitor_center()
+        finder_widget.activate()
+        finder_widget.filter_list()
+        ahk.win_activate(f"ahk_id {finder_widget.winId()}")
+        finder_widget.show_title_list()
+    finder_widget.show()
+    finder_widget.hide()
     ahk.add_hotkey("^<#/", callback=toggle_fuzzy_window)
-
     ahk.start_hotkeys()
+    print(hex_to_ansi(GREEN, "Fuzzy finder initialized"))
 
+    print(hex_to_ansi(YELLOW, "Registering OBS callback..."))
     def show_toast(text: str):
         toaster.clear_toasts()
         toast.text_fields = [text]
@@ -505,19 +403,12 @@ def main():
     def on_replay_buffer_saved(data: ReplayBufferSavedData):
         show_toast(f"Replay buffer saved at:\n{data.saved_replay_path}")
 
-    print(hex_to_ansi(YELLOW, "Registering callback..."))
     client.callback.register(on_record_state_changed) # pyright: ignore[reportUnknownMemberType]
     client.callback.register(on_replay_buffer_state_changed) # pyright: ignore[reportUnknownMemberType]
     client.callback.register(on_replay_buffer_saved) # pyright: ignore[reportUnknownMemberType]
-    print(hex_to_ansi(GREEN, "Callback registered"))
-
-    # obs_widget.resize(20, 120)
-    obs_widget.show()
-    obs_widget.hide()
+    print(hex_to_ansi(GREEN, "OBS callback registered"))
 
     exit_code = app.exec()
-
-    # kill_hook_thread()
 
     sys.exit(exit_code)
 
